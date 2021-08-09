@@ -1,0 +1,334 @@
+name: CB-CI-ACTIONS-WORKFLOW
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - master
+    paths:
+      - "**.go"
+      - ".github/**"
+  pull_request:
+    paths:
+      - "**.go"
+      - ".github/**"
+
+jobs:
+  cb-env-job:
+    name: CB-ENV-JOB
+    if: ${{ github.repository_owner == 'cloud-barista' }}
+    runs-on: ubuntu-latest
+    outputs:
+      #branch: ${{ steps.cev.outputs.branch }}
+      #author_association: ${{ steps.cev.outputs.author_association }}
+      skip_tags: ${{ steps.cev.outputs.steps.cev.outputs.skip_tags }}
+    steps:
+      - name: Check and configure environment variable
+        id: cev
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        uses: actions/github-script@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            (async _ => {
+              console.log('context', context) 
+
+              /****************************************
+              var branch = ""
+              if(context.eventName == "pull_request") branch = context.payload.pull_request.base.ref
+              else branch = context.ref.replace("refs/heads/", "")
+              console.log('branch', branch)
+              core.setOutput('branch', branch)
+              ****************************************/
+
+              /****************************************
+              var author_association = ""
+              if(context.actor == context.payload.repository.owner.login) author_association = "OWNER"
+              if(author_association == "") {        
+                try {
+                  res = await github.orgs.listMembers({org: "cloud-barista" })
+                  console.log('listMembers', res)
+                  if (res.status >= 200 && res.status < 300) {
+                    isMember = res.data.some(({ login }) => login === context.actor)
+                    if(isMember) author_association = "MEMBER"
+                  }                  
+                } catch (e) {
+                  console.log(e)
+                }              
+              }
+              if(author_association == "") {        
+                try {
+                  res = await github.repos.listCollaborators({
+                    owner: context.payload.repository.owner.login,
+                    repo: context.payload.repository.name,
+                  })
+                  console.log('listCollaborators', res)
+                  if (res.status >= 200 && res.status < 300) {
+                    isCollaborator = res.data.some(({ login }) => login === context.actor)
+                    if(isCollaborator) author_association = "COLLABORATOR"
+                  }                   
+                } catch (e) {
+                  console.log(e)
+                }            
+              }
+              console.log('author_association', author_association)
+              core.setOutput('author_association', author_association)
+              ****************************************/
+
+              var skip_tags = ''
+              var title = ""
+              if(context.eventName == "pull_request") title = context.payload.pull_request.title
+              else title = context.payload.head_commit.message
+              
+              var matches = title.match(/\[.+?\]/g)
+              if(matches != null) {
+                for (var i = 0; i < matches.length; i++) { 
+                  skip_tags += matches[i]
+                }
+              }
+
+              console.log('skip_tags', skip_tags)
+              core.setOutput('skip_tags', skip_tags)
+
+            })();
+
+  cb-ci-test-job:
+    name: CB-CI-TEST-JOB
+    if: ${{ github.repository_owner == 'cloud-barista' }}
+    runs-on: ubuntu-latest
+    needs: [cb-env-job]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Make Output Folder
+        run: |
+          mkdir -p ./outputs
+
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.16"
+
+      - name: Setup golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.39.0
+          golangci-lint --version
+
+      - name: Find PR Number
+        id: findPrNumber
+        uses: actions/github-script@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            var fs = require('fs');
+            var prNumber = '0'
+
+            if(context.eventName == 'pull_request') {
+              prNumber = context.payload.number
+            } else if(context.eventName == 'push') {
+              const result = await github.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.sha
+              })
+              const pr = result.data.length > 0 && result.data[0];
+              prNumber = pr && pr.number || '0'
+            }
+            fs.writeFileSync('./outputs/pr_number.txt', prNumber, 'utf8');
+
+      - name: Run Lint
+        run: |
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E deadcode | tee ./outputs/deadcode-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E errcheck | tee ./outputs/errcheck-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E staticcheck | tee ./outputs/staticcheck-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E revive | tee ./outputs/revive-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E gofmt | tee ./outputs/gofmt-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E govet | tee ./outputs/govet-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E gocyclo | tee ./outputs/gocyclo-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E golint | tee ./outputs/golint-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E ineffassign | tee ./outputs/ineffassign-lint-result.txt
+          golangci-lint run --config ./.github/.golangci.yaml --disable-all -E misspell | tee ./outputs/misspell-lint-result.txt
+
+          if [ -f "./outputs/deadcode-lint-result.txt" ] ; then
+            echo "======= deadcode-lint-result.txt ======="
+            cat ./outputs/deadcode-lint-result.txt
+          fi
+          if [ -f "./outputs/errcheck-lint-result.txt" ] ; then
+            echo "======= errcheck-lint-result.txt ======="
+            cat ./outputs/errcheck-lint-result.txt
+          fi
+          if [ -f "./outputs/staticcheck-lint-result.txt" ] ; then
+            echo "======= staticcheck-lint-result.txt ======="
+            cat ./outputs/staticcheck-lint-result.txt
+          fi  
+          if [ -f "./outputs/revive-lint-result.txt" ] ; then
+            echo "======= revive-lint-result.txt ======="
+            cat ./outputs/revive-lint-result.txt
+          fi
+          if [ -f "./outputs/gofmt-lint-result.txt" ] ; then
+            echo "======= gofmt-lint-result.txt ======="
+            cat ./outputs/gofmt-lint-result.txt
+          fi  
+          if [ -f "./outputs/govet-lint-result.txt" ] ; then
+            echo "======= govet-lint-result.txt ======="
+            cat ./outputs/govet-lint-result.txt
+          fi  
+          if [ -f "./outputs/gocyclo-lint-result.txt" ] ; then
+            echo "======= gocyclo-lint-result.txt ======="
+            cat ./outputs/gocyclo-lint-result.txt
+          fi  
+          if [ -f "./outputs/golint-lint-result.txt" ] ; then
+            echo "======= golint-lint-result.txt ======="
+            cat ./outputs/golint-lint-result.txt
+          fi     
+          if [ -f "./outputs/ineffassign-lint-result.txt" ] ; then
+            echo "======= ineffassign-lint-result.txt ======="
+            cat ./outputs/ineffassign-lint-result.txt
+          fi      
+          if [ -f "./outputs/misspell-lint-result.txt" ] ; then
+            echo "======= misspell-lint-result.txt ======="
+            cat ./outputs/misspell-lint-result.txt
+          fi
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-artifact-test
+          path: outputs/
+
+  cb-ci-gobuild-matrix-job:
+    name: CB-CI-GOBUILD-MATRIX-JOB
+    if: ${{ github.repository_owner == 'cloud-barista' }}
+    runs-on: ubuntu-latest
+    needs: [cb-env-job]
+    strategy:
+      matrix:
+        go: ["1.16"]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Make Output Folder
+        run: |
+          mkdir -p ./outputs
+
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Run Build
+        id: build
+        run: |
+          (go build -o test ./src/main.go > ./outputs/build.log 2>&1; echo $? > ./outputs/build.check ) || true
+          if [ -f "./outputs/build.check" ] ; then
+            echo "======= build.check ======="
+            cat ./outputs/build.check
+          fi    
+          if [ -f "./outputs/build.log" ] ; then
+            echo "======= build.log ======="
+            cat ./outputs/build.log
+          fi
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-artifact-gobuild-${{ matrix.go }}
+          path: outputs/
+
+  cb-ci-gobuild-result-job:
+    name: CB-CI-GOBUILD-RESULT-JOB
+    if: ${{ github.repository_owner == 'cloud-barista' }}
+    runs-on: ubuntu-latest
+    needs: [cb-env-job, cb-ci-gobuild-matrix-job]
+    outputs:
+      go_build_check: ${{ steps.mergeresult.outputs.go_build_check }}
+    steps:
+      - name: Make Output Folder
+        run: |
+          mkdir -p ./outputs
+
+      - uses: actions/download-artifact@v2
+
+      - name: Display structure of downloaded files
+        run: ls -R ./cb-artifact-gobuild-*
+
+      - name: Merge Build Result
+        id: mergeresult
+        run: |
+          buildCheck=0
+          checkfiles=`find ./cb-artifact-gobuild-*/build.check`
+          for eachfile in $checkfiles
+          do
+              check=`cat $eachfile`
+              echo "$eachfile : $check"
+              if [ $check != "0" ]; then
+                buildCheck=1
+              fi   
+          done
+
+          echo $buildCheck > ./outputs/build.check
+          echo "::set-output name=go_build_check::${buildCheck}"
+
+          logfiles=`find ./cb-artifact-gobuild-*/build.log`
+          for eachfile in $logfiles
+          do
+              folder=$(awk -F/ '{print $2}' <<< $eachfile)
+              goVersion=$(awk -F- '{print $4}' <<< $folder)
+
+              checkFile="${eachfile//build.log/build.check}"
+              check=`cat $checkFile`
+              log=`cat $eachfile`
+
+              echo "$goVersion : $eachfile : $log"
+
+              echo $eachfile >> ./outputs/build.log
+              echo "" >> ./outputs/build.log
+
+              if [ $check == "0" ]; then
+                  echo "Golang $goVersion Build Success !!!" >> ./outputs/build.log
+              else
+                  echo "Golang $goVersion Build Error !!!" >> ./outputs/build.log
+              fi              
+              echo "" >> ./outputs/build.log
+              echo $log >> ./outputs/build.log
+              echo "" >> ./outputs/build.log
+          done
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-artifact-gobuild
+          path: outputs/
+
+  cb-ci-image-build-job:
+    name: CB-CI-IMAGE-BUILD-JOB
+    if: ${{ github.repository_owner == 'cloud-barista' }}
+    runs-on: ubuntu-latest
+    needs: [cb-env-job]
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Make Output Folder
+        run: |
+          mkdir -p ./outputs
+
+      - name: Build Image Test
+        id: imgbuild
+        run: |
+          (docker build . --file Dockerfile  > ./outputs/dockerbuild.log 2>&1; echo $? > ./outputs/dockerbuild.check ) || true
+
+          if [ -f "./outputs/dockerbuild.check" ] ; then
+            echo "======= dockerbuild.check ======="
+            cat ./outputs/dockerbuild.check
+          fi    
+          if [ -f "./outputs/dockerbuild.log" ] ; then
+            echo "======= dockerbuild.log ======="
+            cat ./outputs/dockerbuild.log
+          fi
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-artifact-image-build
+          path: outputs/
