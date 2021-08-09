@@ -8,7 +8,7 @@ import (
 	"github.com/cloud-barista/poc-cicd-ladybug/src/utils/config"
 )
 
-// @title CB-Ladybug REST API
+// @title CB-Ladybug REST API.
 // @version 0.4.0
 // @description CB-Ladybug REST API
 // @termsOfService http://swagger.io/terms/
