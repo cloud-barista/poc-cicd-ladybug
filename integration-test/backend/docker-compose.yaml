@@ -1,0 +1,32 @@
+version: "3.3"
+services:
+
+  cb-spider:
+    image: cloudbaristaorg/cb-spider:latest
+    container_name: cb-spider-backend
+    ports:
+      - "31024:1024"
+      - "32048:2048"
+    networks:
+      - cb-unit-net
+
+  cb-tumblebug:
+    image: cloudbaristaorg/cb-tumblebug:latest
+    container_name: cb-tumblebug-backend
+    ports:
+      - "31323:1323"
+      - "30252:50252"
+    depends_on:
+      - cb-spider
+    volumes:
+      - ./tumblebug_grpc_conf.yaml:/app/conf/grpc_conf.yaml
+    environment:
+      - SPIDER_CALL_METHOD=REST
+      - SPIDER_REST_URL=http://cb-spider:1024/spider
+      - API_USERNAME=default
+      - API_PASSWORD=default
+    networks:
+      - cb-unit-net      
+  
+networks:
+  cb-unit-net:

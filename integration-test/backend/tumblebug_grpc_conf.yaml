@@ -1,0 +1,6 @@
+version: 1
+grpc:
+  tumblebugsrv:
+    addr: :50252  
+  spidercli:
+    server_addr: cb-spider:2048

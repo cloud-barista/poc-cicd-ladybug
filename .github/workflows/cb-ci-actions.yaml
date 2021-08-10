@@ -225,6 +225,43 @@ jobs:
             cat ./outputs/misspell-lint-result.txt
           fi
 
+      - name: Run Coverage
+        env:
+          CBSTORE_ROOT: ${{ github.workspace }}/integration-test
+          CBLOG_ROOT: ${{ github.workspace }}/integration-test
+          APP_ROOT: ${{ github.workspace }}/integration-test
+          SPIDER_URL: http://localhost:31024/spider # *** Be careful : port is changed for testing
+          TUMBLEBUG_URL: http://localhost:31323/tumblebug # *** Be careful : port is changed for testing
+          BASE_PATH: /ladybug
+          API_USERNAME: default
+          API_PASSWORD: default
+          GOLANG_PROTOBUF_REGISTRATION_CONFLICT: ignore
+        run: |
+          cd ${{ github.workspace }}/integration-test
+          (go test -p 1 -v -coverpkg=$(go list ../... | grep -v integration-test | grep -v protobuf | tr "\n" ",")  -coverprofile=../outputs/coverage.txt ./... > ../outputs/coverage.log 2>&1; echo $? > ../outputs/coverage.check ) || true
+          
+          cd ${{ github.workspace }}
+          if [ -f "./outputs/coverage.check" ] ; then
+            echo "======= coverage.check ======="
+            cat ./outputs/coverage.check
+          fi    
+          if [ -f "./outputs/coverage.log" ] ; then
+            echo "======= coverage.log ======="
+            cat ./outputs/coverage.log
+          fi   
+          #if [ -f "./outputs/coverage.txt" ] ; then
+          #  echo "======= coverage.txt ======="
+          #  cat ./outputs/coverage.txt
+          #fi
+          (go tool cover -html=./outputs/coverage.txt -o ./outputs/coverage.html) || true
+          (go tool cover -func ./outputs/coverage.txt | grep total | awk '{print $3}' > ./outputs/coverage.total) || true
+          go get -u github.com/jstemmer/go-junit-report
+          cat ./outputs/coverage.log | go-junit-report > ./outputs/unit-tests.xml
+          if [ -f "./outputs/unit-tests.xml" ] ; then
+            echo "======= unit-tests.xml ======="
+            cat ./outputs/unit-tests.xml
+          fi
+
       - name: Upload Result
         uses: actions/upload-artifact@v2
         with:
