@@ -1,0 +1,10 @@
+version: 1
+grpc:
+  ladybugsrv:
+    addr: :30254
+  ladybugcli:
+    server_addr: 127.0.0.1:30254      
+  tumblebugcli:
+    server_addr: 127.0.0.1:30252    
+  spidercli:
+    server_addr: 127.0.0.1:32048
