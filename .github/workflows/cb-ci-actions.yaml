@@ -93,6 +93,40 @@ jobs:
 
             })();
 
+  cb-ci-shosted-job:
+    name: CB-CI-SHOSTED-JOB
+    if: ${{ github.repository_owner == 'cloud-barista' }}
+    runs-on: [self-hosted, linux, X64]
+    needs: [cb-env-job]
+    steps:
+      - name: Make Output Folder
+        run: |
+          mkdir -p ./outputs
+
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: "1.16"
+
+      - name: Get OS Version
+        run: |
+          (uname -a > ./outputs/selfhost.log 2>&1; echo $? > ./outputs/selfhost.check ) || true
+
+          if [ -f "./outputs/selfhost.check" ] ; then
+            echo "======= selfhost.check ======="
+            cat ./outputs/selfhost.check
+          fi    
+          if [ -f "./outputs/selfhost.log" ] ; then
+            echo "======= selfhost.log ======="
+            cat ./outputs/selfhost.log
+          fi
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v2
+        with:
+          name: cb-artifact-shosted
+          path: outputs/
+
   cb-ci-test-job:
     name: CB-CI-TEST-JOB
     if: ${{ github.repository_owner == 'cloud-barista' }}
