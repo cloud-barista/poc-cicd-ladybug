@@ -1,45 +1,51 @@
-package restscenario
+package cliscenario
 
 import (
+	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
-	"os/exec"
-
-	"bou.ke/monkey"
-	"github.com/go-resty/resty/v2"
-	"github.com/sirupsen/logrus"
-
 	"github.com/cloud-barista/poc-cicd-ladybug/src/core/service"
+	"github.com/cloud-barista/poc-cicd-ladybug/src/grpc-api/config"
+	"github.com/cloud-barista/poc-cicd-ladybug/src/grpc-api/logger"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/test/bufconn"
+	"gopkg.in/resty.v1"
+
+	gc "github.com/cloud-barista/poc-cicd-ladybug/src/grpc-api/common"
+	pb "github.com/cloud-barista/poc-cicd-ladybug/src/grpc-api/protobuf/cbladybug"
+
 	lb_conf "github.com/cloud-barista/poc-cicd-ladybug/src/utils/config"
 	"github.com/cloud-barista/poc-cicd-ladybug/src/utils/lang"
 
+	grpc_mcar "github.com/cloud-barista/poc-cicd-ladybug/src/grpc-api/server/mcar"
+
 	sshrun "github.com/cloud-barista/cb-spider/cloud-control-manager/vm-ssh"
 	cbstore "github.com/cloud-barista/cb-store"
+
+	"bou.ke/monkey"
+	"github.com/sirupsen/logrus"
 )
 
 type TestCases struct {
-	Name                 string
-	EchoFunc             string
-	HttpMethod           string
-	WhenURL              string
-	GivenQueryParams     string
-	GivenParaNames       []string
-	GivenParaVals        []string
-	GivenPostData        string
-	ExpectStatus         int
-	ExpectBodyStartsWith string
-	ExpectBodyContains   string
+	Name                string
+	CmdArgs             []string
+	ExpectResStartsWith string
+	ExpectResContains   string
 }
 
 var (
-	holdStdout *os.File = nil
-	nullOut    *os.File = nil
+	holdStdout *os.File     = nil
+	nullOut    *os.File     = nil
+	gs         *grpc.Server = nil
 )
 
 func init() {
@@ -56,7 +62,7 @@ func init() {
 	}
 }
 
-func SetUpForRest() {
+func SetUpForCli() {
 
 	holdStdout = os.Stdout
 	nullOut, _ := os.Open(os.DevNull)
@@ -130,6 +136,46 @@ func SetUpForRest() {
 	flag.Parse()
 
 	/**
+	** Ladybug Grpc Server Setup
+	**/
+	listener := bufconn.Listen(1024 * 1024)
+
+	monkey.Patch(gc.NewCBConnection, func(gConf *config.GrpcClientConfig) (*gc.CBConnection, io.Closer, error) {
+		conn, _ := grpc.DialContext(context.Background(), "", grpc.WithInsecure(), grpc.WithContextDialer(
+			func(context.Context, string) (net.Conn, error) {
+				return listener.Dial()
+			}))
+		return &gc.CBConnection{Conn: conn}, nil, nil
+	})
+
+	logger := logger.NewLogger()
+
+	ladybugsrv := &config.GrpcServerConfig{
+		Addr: "127.0.0.1:30254",
+	}
+
+	cbserver, closer, err := gc.NewCBServer(ladybugsrv)
+	if err != nil {
+		logger.Fatal("failed to create grpc server: ", err)
+	}
+
+	gs = cbserver.Server
+	pb.RegisterMCARServer(gs, &grpc_mcar.MCARService{})
+
+	go func() {
+
+		if closer != nil {
+			defer closer.Close()
+		}
+
+		if err := gs.Serve(listener); err != nil {
+			logger.Fatal("failed to serve: ", err)
+		}
+	}()
+
+	time.Sleep(time.Second * 2)
+
+	/**
 	** Function Patch for Testing
 	**/
 	monkey.Patch(sshrun.SSHRun, func(sshInfo sshrun.SSHInfo, cmd string) (string, error) {
@@ -170,7 +216,9 @@ func SetUpForRest() {
 	})
 }
 
-func TearDownForRest() {
+func TearDownForCli() {
+	gs.Stop()
+
 	cmd := exec.Command("./stop.sh")
 	cmd.Dir = "../backend"
 	cmd.Run()

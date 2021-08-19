@@ -2,7 +2,7 @@ version: "3.3"
 services:
 
   cb-spider:
-    image: cloudbaristaorg/cb-spider:latest
+    image: cloudbaristaorg/cb-spider:0.4.7
     container_name: cb-spider-backend
     ports:
       - "31024:1024"
@@ -11,7 +11,7 @@ services:
       - cb-unit-net
 
   cb-tumblebug:
-    image: cloudbaristaorg/cb-tumblebug:latest
+    image: cloudbaristaorg/cb-tumblebug:0.4.2
     container_name: cb-tumblebug-backend
     ports:
       - "31323:1323"
