@@ -227,9 +227,9 @@ jobs:
 
       - name: Run Coverage
         env:
-          CBSTORE_ROOT: ${{ github.workspace }}/integration-test
-          CBLOG_ROOT: ${{ github.workspace }}/integration-test
-          APP_ROOT: ${{ github.workspace }}/integration-test
+          CBSTORE_ROOT: ${{ github.workspace }}/docs/integration-test
+          CBLOG_ROOT: ${{ github.workspace }}/docs/integration-test
+          APP_ROOT: ${{ github.workspace }}/docs/integration-test
           SPIDER_URL: http://localhost:31024/spider # *** Be careful : port is changed for testing
           TUMBLEBUG_URL: http://localhost:31323/tumblebug # *** Be careful : port is changed for testing
           BASE_PATH: /ladybug
@@ -237,8 +237,8 @@ jobs:
           API_PASSWORD: default
           GOLANG_PROTOBUF_REGISTRATION_CONFLICT: ignore
         run: |
-          cd ${{ github.workspace }}/integration-test
-          (go test -p 1 -v -coverpkg=$(go list ../... | grep -v integration-test | grep -v protobuf | tr "\n" ",")  -coverprofile=../outputs/coverage.txt ./... > ../outputs/coverage.log 2>&1; echo $? > ../outputs/coverage.check ) || true
+          cd ${{ github.workspace }}/docs/integration-test
+          (go test -p 1 -v -coverpkg=$(go list ../../... | grep -v integration-test | grep -v protobuf | tr "\n" ",")  -coverprofile=../../outputs/coverage.txt ./... > ../../outputs/coverage.log 2>&1; echo $? > ../../outputs/coverage.check ) || true
           
           cd ${{ github.workspace }}
           if [ -f "./outputs/coverage.check" ] ; then
