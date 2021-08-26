@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	gs "github.com/cloud-barista/poc-cicd-ladybug/integration-test/go-scenario"
-	rs "github.com/cloud-barista/poc-cicd-ladybug/integration-test/rest-scenario"
+	gs "github.com/cloud-barista/poc-cicd-ladybug/docs/integration-test/go-scenario"
+	rs "github.com/cloud-barista/poc-cicd-ladybug/docs/integration-test/rest-scenario"
 )
 
 func TestPrepareFull(t *testing.T) {

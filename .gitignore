@@ -28,5 +28,5 @@ meta_db/
 # Binaries
 src/grpc-api/cbadm/cbadm
 
-integration-test/profile.cov
-integration-test/meta_db/dat/*
+docs/integration-test/profile.cov
+docs/integration-test/meta_db/dat/*
