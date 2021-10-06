@@ -21,7 +21,7 @@ jobs:
     outputs:
       #branch: ${{ steps.cev.outputs.branch }}
       #author_association: ${{ steps.cev.outputs.author_association }}
-      skip_tags: ${{ steps.cev.outputs.steps.cev.outputs.skip_tags }}
+      skip_tags: ${{ steps.cev.outputs.skip_tags }}
     steps:
       - name: Check and configure environment variable
         id: cev
